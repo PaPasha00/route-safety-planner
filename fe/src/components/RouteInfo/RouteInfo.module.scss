@@ -1,0 +1,80 @@
+.routeInfo {
+  position: absolute;
+  bottom: 20px;
+  left: 20px;
+  background: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+  z-index: 1000;
+  max-width: 400px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+.title {
+  margin: 0 0 15px 0;
+  color: #2c5530;
+}
+
+.stats {
+  margin-bottom: 15px;
+}
+
+.stat {
+  margin: 5px 0;
+  font-size: 14px;
+}
+
+.loading {
+  margin: 5px 0;
+  color: #666;
+  font-style: italic;
+}
+
+.coordinates {
+  margin: 10px 0 15px 0;
+}
+
+.coordinatesTitle {
+  margin: 10px 0 5px 0;
+  font-size: 14px;
+}
+
+.coordinatesList {
+  max-height: 150px;
+  overflow-y: auto;
+  margin-bottom: 15px;
+  padding: 5px;
+  border: 1px solid #eee;
+  border-radius: 4px;
+  background: #f9f9f9;
+}
+
+.coordinate {
+  font-size: 11px;
+  margin-bottom: 3px;
+  font-family: monospace;
+  color: #555;
+}
+
+.clearButton {
+  background: #f44336;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  border-radius: 4px;
+  cursor: pointer;
+  width: 100%;
+  font-size: 14px;
+  font-weight: 500;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background: #d32f2f;
+  }
+
+  &:active {
+    background: #b71c1c;
+  }
+}

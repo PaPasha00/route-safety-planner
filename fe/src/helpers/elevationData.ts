@@ -1,11 +1,14 @@
-// Функция для получения высотных данных
-// Функция для получения высотных данных через ваш сервер
+import { LatLngTuple, ElevationResponse } from '../types';
+
+/**
+ * Получает данные о высотах через API
+ */
 export const getElevationData = async (coordinates: LatLngTuple[]): Promise<number[]> => {
   try {
     // Ограничиваем количество точек для запроса
     const limitedCoords = coordinates.slice(0, 100);
     
-    // Делаем запрос к вашему серверу
+    // Делаем запрос к серверу
     const response = await fetch('http://localhost:3001/api/elevation', {
       method: 'POST',
       headers: {
@@ -18,12 +21,12 @@ export const getElevationData = async (coordinates: LatLngTuple[]): Promise<numb
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json();
+    const data: ElevationResponse = await response.json();
     
     if (data.results && data.results.length > 0) {
-      return data.results.map((result: any) => result.elevation);
-    } else if (data.error) {
-      throw new Error(data.error);
+      return data.results.map((result) => result.elevation);
+    } else if (data.status === 'ERROR') {
+      throw new Error('Elevation data error');
     } else {
       throw new Error('No elevation data received');
     }
@@ -36,7 +39,9 @@ export const getElevationData = async (coordinates: LatLngTuple[]): Promise<numb
   }
 };
 
-// Функция для генерации демо-данных о высотах
+/**
+ * Генерирует демо-данные о высотах
+ */
 export const simulateElevationData = (coordinates: LatLngTuple[]): number[] => {
   if (coordinates.length === 0) return [];
   
@@ -51,41 +56,4 @@ export const simulateElevationData = (coordinates: LatLngTuple[]): number[] => {
   }
   
   return elevations;
-};
-
-// Функция для расчета перепада высот
-export const calculateElevationStats = (elevations: number[]): {
-  totalGain: number;
-  totalLoss: number;
-  minElevation: number;
-  maxElevation: number;
-  avgElevation: number;
-} => {
-  if (elevations.length < 2) {
-    return { totalGain: 0, totalLoss: 0, minElevation: 0, maxElevation: 0, avgElevation: 0 };
-  }
-
-  let totalGain = 0;
-  let totalLoss = 0;
-
-  for (let i = 1; i < elevations.length; i++) {
-    const diff = elevations[i] - elevations[i - 1];
-    if (diff > 0) {
-      totalGain += diff;
-    } else {
-      totalLoss += Math.abs(diff);
-    }
-  }
-
-  const minElevation = Math.min(...elevations);
-  const maxElevation = Math.max(...elevations);
-  const avgElevation = elevations.reduce((sum, elev) => sum + elev, 0) / elevations.length;
-
-  return {
-    totalGain: Math.round(totalGain),
-    totalLoss: Math.round(totalLoss),
-    minElevation: Math.round(minElevation),
-    maxElevation: Math.round(maxElevation),
-    avgElevation: Math.round(avgElevation)
-  };
 };
