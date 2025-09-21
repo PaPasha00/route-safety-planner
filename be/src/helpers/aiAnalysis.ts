@@ -101,6 +101,11 @@ ${request.elevationData.slice(0, 10).map((elev, i) => `  ${i+1}. ${elev}м`).joi
  */
 export async function analyzeRouteWithAI(prompt: string): Promise<string> {
   try {
+    // Проверяем наличие API ключа
+    if (!process.env.OPENROUTER_API_KEY) {
+      throw new Error('OPENROUTER_API_KEY не настроен. Создайте файл .env с вашим API ключом');
+    }
+    
     console.log('🤖 Отправка запроса к ИИ с анализом всех точек маршрута...');
     
     const response = await axios.post(
@@ -126,6 +131,12 @@ export async function analyzeRouteWithAI(prompt: string): Promise<string> {
     return analysis;
   } catch (error) {
     console.error('❌ Ошибка при обращении к ИИ:', (error as Error).message);
+    
+    // Если это ошибка с API ключом, даем более понятное сообщение
+    if ((error as any).response?.status === 401) {
+      throw new Error('API ключ OpenRouter не настроен или неверный. См. API_SETUP.md для настройки');
+    }
+    
     throw new Error('Не удалось получить анализ от ИИ');
   }
 }

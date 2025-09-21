@@ -1,10 +1,12 @@
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import {
   MapContainer as LeafletMapContainer,
   TileLayer,
   useMapEvents,
   Polyline,
   useMap,
+  Marker,
+  Popup,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -19,6 +21,7 @@ import {
 } from "../../helpers/elevationData";
 import { calculateElevationStats } from "../../helpers/routeCalculations";
 import LeafletDraw from "./LeafletDraw";
+import SearchBox from "../Search/SearchBox";
 import styles from "./MapContainer.module.scss";
 
 // Исправляем иконки маркеров
@@ -40,6 +43,26 @@ interface MapContainerProps {
   ) => void;
   onRouteCleared: () => void;
   drawEnabled: boolean;
+}
+
+// Компонент для обработки поиска и перемещения карты
+function SearchHandler({
+  searchLocation,
+  onLocationFound,
+}: {
+  searchLocation: LatLngTuple | null;
+  onLocationFound: (coords: LatLngTuple, name?: string) => void;
+}) {
+  const map = useMap();
+  const markerRef = useRef<L.Marker>(null);
+
+  useEffect(() => {
+    if (searchLocation) {
+      map.setView(searchLocation, 15);
+    }
+  }, [searchLocation, map]);
+
+  return null;
 }
 
 function ClickHandler() {
@@ -88,6 +111,24 @@ const MapContainer: React.FC<MapContainerProps> = ({
   onRouteCleared,
   drawEnabled,
 }) => {
+  const [searchLocation, setSearchLocation] = useState<LatLngTuple | null>(
+    null
+  );
+  const [searchMarker, setSearchMarker] = useState<{
+    coords: LatLngTuple;
+    name: string;
+  } | null>(null);
+
+  const handleLocationFound = useCallback(
+    (coords: LatLngTuple, name?: string) => {
+      setSearchLocation(coords);
+      if (name) {
+        setSearchMarker({ coords, name });
+      }
+    },
+    []
+  );
+
   const onCreated = useCallback(
     async (e: L.DrawEvents.Created) => {
       const { layerType, layer } = e;
@@ -152,29 +193,54 @@ const MapContainer: React.FC<MapContainerProps> = ({
 
   return (
     <div className={styles.mapContainer}>
+      <SearchBox onLocationFound={handleLocationFound} />
+
       <LeafletMapContainer
         center={[55.75, 37.62]}
         zoom={10}
         className={styles.map}
       >
+        {/* Русские тайлы OpenStreetMap */}
         <TileLayer
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="© OpenStreetMap"
+          attribution="© OpenStreetMap contributors"
         />
+
+        {/* Дополнительные русские тайлы для лучшего отображения */}
         <TileLayer
-          url="http://localhost:3001/tiles/h/{z}/{x}/{y}"
-          attribution="© nakarte.me (через прокси)"
-          maxZoom={14}
+          url="https://tile.openstreetmap.ru/{z}/{x}/{y}.png"
+          attribution="© OpenStreetMap Russia"
+          maxZoom={18}
         />
 
         {/* Отображаем маршрут */}
         {route && <Polyline positions={route} color="#3388ff" weight={4} />}
+
+        {/* Маркер найденного места */}
+        {searchMarker && (
+          <Marker position={searchMarker.coords}>
+            <Popup>
+              <div>
+                <strong>{searchMarker.name}</strong>
+                <br />
+                Координаты: {searchMarker.coords[0].toFixed(6)},{" "}
+                {searchMarker.coords[1].toFixed(6)}
+              </div>
+            </Popup>
+          </Marker>
+        )}
 
         {/* Компонент рисования */}
         {drawEnabled && <LeafletDraw {...drawOptions} />}
 
         {/* Обработчик событий рисования */}
         <DrawEventHandler onCreated={onCreated} onDeleted={onRouteCleared} />
+
+        {/* Обработчик поиска */}
+        <SearchHandler
+          searchLocation={searchLocation}
+          onLocationFound={handleLocationFound}
+        />
 
         <ClickHandler />
       </LeafletMapContainer>
