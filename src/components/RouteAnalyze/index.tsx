@@ -37,7 +37,7 @@ const RouteAnalyzer = () => {
     <div
       style={{
         position: "absolute",
-        top: 20,
+        bottom: 40,
         right: 20,
         background: "white",
         padding: "20px",

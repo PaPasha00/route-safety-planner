@@ -1,6 +1,11 @@
-// src/App.tsx
-import React, { useState, useCallback } from "react";
-import { MapContainer, TileLayer, useMapEvents } from "react-leaflet";
+import React, { useState, useCallback, useEffect } from "react";
+import {
+  MapContainer,
+  TileLayer,
+  useMapEvents,
+  Polyline,
+  useMap,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
@@ -27,33 +32,124 @@ function ClickHandler() {
   return null;
 }
 
+// Новый компонент для обработки событий рисования
+function DrawEventHandler({
+  onCreated,
+  onDeleted,
+}: {
+  onCreated: (e: L.DrawEvents.Created) => void;
+  onDeleted: () => void;
+}) {
+  const map = useMap();
+
+  useEffect(() => {
+    const handleCreated = (e: L.DrawEvents.Created) => {
+      onCreated(e);
+    };
+
+    const handleDeleted = () => {
+      onDeleted();
+    };
+
+    map.on(L.Draw.Event.CREATED, handleCreated);
+    map.on(L.Draw.Event.DELETED, handleDeleted);
+
+    return () => {
+      map.off(L.Draw.Event.CREATED, handleCreated);
+      map.off(L.Draw.Event.DELETED, handleDeleted);
+    };
+  }, [map, onCreated, onDeleted]);
+
+  return null;
+}
+
+// Функция для расчета длины маршрута в метрах
+const calculateRouteLength = (route: LatLngTuple[]): number => {
+  if (route.length < 2) return 0;
+
+  let totalLength = 0;
+  for (let i = 1; i < route.length; i++) {
+    const prev = route[i - 1];
+    const curr = route[i];
+    totalLength += L.latLng(prev[0], prev[1]).distanceTo(
+      L.latLng(curr[0], curr[1])
+    );
+  }
+  return totalLength;
+};
+
+// Функция для форматирования длины
+const formatLength = (meters: number): string => {
+  if (meters < 1000) {
+    return `${meters.toFixed(0)} м`;
+  } else {
+    return `${(meters / 1000).toFixed(2)} км`;
+  }
+};
+
 function App() {
   const [route, setRoute] = useState<LatLngTuple[] | null>(null);
-
-  console.log(route);
+  const [drawEnabled, setDrawEnabled] = useState(true);
+  const [routeLength, setRouteLength] = useState<number>(0);
 
   const onCreated = useCallback((e: L.DrawEvents.Created) => {
     const { layerType, layer } = e;
 
     if (layerType === "polyline") {
-      const coords = (layer as L.Polyline).getLatLngs() as LatLngTuple[];
-      setRoute(coords);
-      console.log("Нарисован маршрут:", coords);
+      const polyline = layer as L.Polyline;
+      const latLngs = polyline.getLatLngs();
 
-      let totalLength = 0;
-      for (let i = 1; i < coords.length; i++) {
-        const prev = coords[i - 1];
-        const curr = coords[i];
-        const dx = curr[1] - prev[1];
-        const dy = curr[0] - prev[0];
-        totalLength += Math.sqrt(dx * dx + dy * dy);
-      }
-      console.log(`Длина маршрута (градусы): ${totalLength.toFixed(4)}`);
+      // Преобразуем LatLng объекты в кортежи [number, number]
+      const coords: LatLngTuple[] = latLngs.map((latLng: any) => [
+        latLng.lat,
+        latLng.lng,
+      ]) as LatLngTuple[];
+
+      setRoute(coords);
+      setDrawEnabled(false);
+
+      // Рассчитываем длину маршрута
+      const length = calculateRouteLength(coords);
+      setRouteLength(length);
+
+      console.log("Нарисован маршрут:", coords);
+      console.log(`Длина маршрута: ${formatLength(length)}`);
     }
   }, []);
 
   const handleClear = () => {
     setRoute(null);
+    setRouteLength(0);
+    setDrawEnabled(true);
+  };
+
+  const handleDelete = useCallback(() => {
+    setRoute(null);
+    setRouteLength(0);
+    setDrawEnabled(true);
+  }, []);
+
+  const drawOptions: L.Control.DrawOptions = {
+    position: "topright",
+    draw: {
+      polyline: {
+        shapeOptions: {
+          color: "#3388ff",
+          weight: 4,
+        },
+        metric: true,
+        showLength: true,
+      },
+      polygon: false,
+      circle: false,
+      rectangle: false,
+      marker: false,
+      circlemarker: false,
+    },
+    edit: {
+      featureGroup: new L.FeatureGroup(),
+      remove: true,
+    },
   };
 
   return (
@@ -74,8 +170,14 @@ function App() {
           maxZoom={14}
         />
 
-        {/* Наш кастомный компонент рисования */}
-        <LeafletDraw onCreated={onCreated} />
+        {/* Отображаем маршрут */}
+        {route && <Polyline positions={route} color="#3388ff" weight={4} />}
+
+        {/* Компонент рисования */}
+        {drawEnabled && <LeafletDraw {...drawOptions} />}
+
+        {/* Обработчик событий рисования */}
+        <DrawEventHandler onCreated={onCreated} onDeleted={handleDelete} />
 
         <ClickHandler />
       </MapContainer>
@@ -91,27 +193,49 @@ function App() {
             borderRadius: "8px",
             boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
             zIndex: 1000,
-            maxWidth: "300px",
+            maxWidth: "400px",
+            maxHeight: "400px",
+            overflowY: "auto",
           }}
         >
           <h4>📈 Маршрут нарисован</h4>
-          <p>
-            <strong>Точек:</strong> {route.length}
+
+          <div style={{ marginBottom: "15px" }}>
+            <p style={{ margin: "5px 0" }}>
+              <strong>Точек:</strong> {route.length}
+            </p>
+            <p style={{ margin: "5px 0" }}>
+              <strong>Длина:</strong> {formatLength(routeLength)}
+            </p>
+          </div>
+
+          <p style={{ margin: "10px 0 5px 0" }}>
+            <strong>Координаты:</strong>
           </p>
-          <p>
-            <strong>Длина (градусы):</strong>{" "}
-            {route.length > 1
-              ? route
-                  .reduce((sum, point, i, arr) => {
-                    if (i === 0) return sum;
-                    const prev = arr[i - 1];
-                    const dx = point[1] - prev[1];
-                    const dy = point[0] - prev[0];
-                    return sum + Math.sqrt(dx * dx + dy * dy);
-                  }, 0)
-                  .toFixed(4)
-              : "0.0000"}
-          </p>
+          <div
+            style={{
+              maxHeight: "150px",
+              overflowY: "auto",
+              marginBottom: "15px",
+              padding: "5px",
+              border: "1px solid #eee",
+              borderRadius: "4px",
+            }}
+          >
+            {route.map((coord, index) => (
+              <div
+                key={index}
+                style={{
+                  fontSize: "11px",
+                  marginBottom: "3px",
+                  fontFamily: "monospace",
+                }}
+              >
+                {index + 1}. {coord[0].toFixed(6)}, {coord[1].toFixed(6)}
+              </div>
+            ))}
+          </div>
+
           <button
             onClick={handleClear}
             style={{
@@ -121,6 +245,7 @@ function App() {
               padding: "8px 16px",
               borderRadius: "4px",
               cursor: "pointer",
+              width: "100%",
             }}
           >
             Очистить маршрут
