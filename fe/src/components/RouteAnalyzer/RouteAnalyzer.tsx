@@ -1,11 +1,14 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   LatLngTuple,
   ElevationStats,
   RouteAnalysisRequest,
   RouteAnalysisResponse,
+  DailyRoute,
 } from "../../types";
 import { analyzeRoute } from "../../helpers/api";
+import { useDraggable } from "../../hooks/useDraggable";
+import { useResizable } from "../../hooks/useResizable";
 import styles from "./RouteAnalyzer.module.scss";
 
 interface RouteAnalyzerProps {
@@ -22,16 +25,52 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
   elevationData,
 }) => {
   const [inputs, setInputs] = useState({
-    elevationGain: "",
-    terrain: "горы",
+    tourismType: "пеший",
+    startDate: "",
+    endDate: "",
   });
   const [result, setResult] = useState("");
   const [analysis, setAnalysis] = useState("");
+  const [dailyRoutes, setDailyRoutes] = useState<DailyRoute[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showPopup, setShowPopup] = useState(false);
+
+  const draggable = useDraggable();
+  const resizable = useResizable({
+    minWidth: 400,
+    minHeight: 300,
+    maxWidth: 800,
+    maxHeight: 600,
+  });
+
+  useEffect(() => {
+    // Устанавливаем даты по умолчанию
+    const today = new Date();
+    const tomorrow = new Date(today);
+    tomorrow.setDate(tomorrow.getDate() + 1);
+
+    setInputs((prev) => ({
+      ...prev,
+      startDate: today.toISOString().split("T")[0],
+      endDate: tomorrow.toISOString().split("T")[0],
+    }));
+  }, []);
+
+  useEffect(() => {
+    // Активируем перетаскивание
+    draggable.enableDragging();
+    resizable.enableResizing();
+
+    return () => {
+      draggable.disableDragging();
+      resizable.disableResizing();
+    };
+  }, [draggable, resizable]);
 
   const handleChange = (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>
   ) => {
+    console.log("Input changed:", e.target.name, e.target.value);
     setInputs({ ...inputs, [e.target.name]: e.target.value });
   };
 
@@ -46,10 +85,10 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
     try {
       const requestData: RouteAnalysisRequest = {
         lengthKm: length,
-        elevationGain: inputs.elevationGain
-          ? Number(inputs.elevationGain)
-          : elevationGain,
-        terrain: inputs.terrain,
+        elevationGain: elevationGain,
+        tourismType: inputs.tourismType,
+        startDate: inputs.startDate,
+        endDate: inputs.endDate,
         coordinates: route,
         elevationData: elevationData || [],
         lengthMeters: length * 1000,
@@ -57,6 +96,7 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
 
       const data: RouteAnalysisResponse = await analyzeRoute(requestData);
       setAnalysis(data.analysis);
+      setDailyRoutes(data.dailyRoutes || []);
       setResult("Анализ завершен успешно!");
     } catch (err) {
       const errorMessage =
@@ -68,8 +108,19 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
   };
 
   return (
-    <div className={styles.routeAnalyzer}>
-      <h3 className={styles.title}>🏔️ Анализ маршрута</h3>
+    <div ref={draggable.elementRef} className={styles.routeAnalyzer}>
+      <div className={styles.header} onMouseDown={draggable.handleMouseDown}>
+        <h3 className={styles.title}>🏔️ Анализ маршрута</h3>
+        <div className={styles.controls}>
+          <button
+            className={styles.popupButton}
+            onClick={() => setShowPopup(true)}
+            title="Открыть в отдельном окне"
+          >
+            🔗
+          </button>
+        </div>
+      </div>
 
       {route && (
         <div className={styles.routeData}>
@@ -81,38 +132,58 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
             🌄 Высотные данные:{" "}
             {elevationData ? elevationData.length + " точек" : "загружаются..."}
           </div>
+          <div style={{ fontSize: "12px", color: "#666", marginTop: "10px" }}>
+            <div>Тип туризма: {inputs.tourismType}</div>
+            <div>Дата начала: {inputs.startDate}</div>
+            <div>Дата окончания: {inputs.endDate}</div>
+          </div>
         </div>
       )}
 
       <form onSubmit={handleSubmit} className={styles.form}>
         <div className={styles.inputGroup}>
-          <label className={styles.label}>📐 Перепад высот (м):</label>
+          <label className={styles.label}>🚶 Тип туризма:</label>
+          <select
+            name="tourismType"
+            value={inputs.tourismType}
+            onChange={handleChange}
+            className={styles.select}
+          >
+            <option value="пеший">🚶 Пеший</option>
+            <option value="велосипедный">🚴 Велосипедный</option>
+            <option value="водный">🚣 Водный</option>
+            <option value="горный">🏔️ Горный</option>
+            <option value="лыжный">🎿 Лыжный</option>
+            <option value="автомобильный">🚗 Автомобильный</option>
+            <option value="воздушный">✈️ Воздушный</option>
+            <option value="мото">🏍️ Мото</option>
+          </select>
+        </div>
+
+        <div className={styles.inputGroup}>
+          <label className={styles.label}>📅 Дата начала:</label>
           <input
-            type="number"
-            name="elevationGain"
-            value={inputs.elevationGain || elevationGain}
+            type="date"
+            name="startDate"
+            value={inputs.startDate}
             onChange={handleChange}
             required
-            min="0"
             className={styles.input}
+            style={{ minWidth: "150px" }}
           />
         </div>
 
         <div className={styles.inputGroup}>
-          <label className={styles.label}>🏞️ Тип местности:</label>
-          <select
-            name="terrain"
-            value={inputs.terrain}
+          <label className={styles.label}>📅 Дата окончания:</label>
+          <input
+            type="date"
+            name="endDate"
+            value={inputs.endDate}
             onChange={handleChange}
-            className={styles.select}
-          >
-            <option value="горы">🏔️ Горы</option>
-            <option value="лес">🌲 Лес</option>
-            <option value="равнина">🌾 Равнина</option>
-            <option value="побережье">🏖️ Побережье</option>
-            <option value="город">🏙️ Город</option>
-            <option value="смешанный">🔀 Смешанный</option>
-          </select>
+            required
+            className={styles.input}
+            style={{ minWidth: "150px" }}
+          />
         </div>
 
         <button
@@ -144,6 +215,108 @@ const RouteAnalyzer: React.FC<RouteAnalyzerProps> = ({
         <div className={styles.analysis}>
           <h4 className={styles.analysisTitle}>📋 Результат анализа:</h4>
           <div className={styles.analysisContent}>{analysis}</div>
+        </div>
+      )}
+
+      {dailyRoutes.length > 0 && (
+        <div className={styles.dailyRoutes}>
+          <h4 className={styles.dailyTitle}>📅 Разбивка по дням:</h4>
+          <div className={styles.dailyList}>
+            {dailyRoutes.map((day) => (
+              <div key={day.day} className={styles.dayCard}>
+                <div className={styles.dayHeader}>
+                  <h5>День {day.day}</h5>
+                  <span className={styles.date}>{day.date}</span>
+                </div>
+                <div className={styles.dayStats}>
+                  <span>📏 {day.distance} км</span>
+                  <span>📈 +{day.elevationGain}м</span>
+                </div>
+                <div className={styles.weather}>
+                  <span>🌤️ {day.weather.description}</span>
+                </div>
+                <div className={styles.description}>{day.description}</div>
+                {day.recommendations.length > 0 && (
+                  <div className={styles.recommendations}>
+                    <strong>💡 Рекомендации:</strong>
+                    <ul>
+                      {day.recommendations.map((rec, idx) => (
+                        <li key={idx}>{rec}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Resize handles */}
+      <div
+        className={styles.resizeHandle}
+        onMouseDown={(e) => resizable.handleMouseDown(e, "se")}
+      />
+
+      {/* Popup Modal */}
+      {showPopup && (
+        <div
+          className={styles.popupOverlay}
+          onClick={() => setShowPopup(false)}
+        >
+          <div className={styles.popup} onClick={(e) => e.stopPropagation()}>
+            <div className={styles.popupHeader}>
+              <h3>📋 Анализ маршрута</h3>
+              <button
+                className={styles.closeButton}
+                onClick={() => setShowPopup(false)}
+              >
+                ✕
+              </button>
+            </div>
+            <div className={styles.popupContent}>
+              {analysis && (
+                <div className={styles.analysis}>
+                  <div className={styles.analysisContent}>{analysis}</div>
+                </div>
+              )}
+              {dailyRoutes.length > 0 && (
+                <div className={styles.dailyRoutes}>
+                  <h4>📅 Разбивка по дням:</h4>
+                  <div className={styles.dailyList}>
+                    {dailyRoutes.map((day) => (
+                      <div key={day.day} className={styles.dayCard}>
+                        <div className={styles.dayHeader}>
+                          <h5>День {day.day}</h5>
+                          <span className={styles.date}>{day.date}</span>
+                        </div>
+                        <div className={styles.dayStats}>
+                          <span>📏 {day.distance} км</span>
+                          <span>📈 +{day.elevationGain}м</span>
+                        </div>
+                        <div className={styles.weather}>
+                          <span>🌤️ {day.weather.description}</span>
+                        </div>
+                        <div className={styles.description}>
+                          {day.description}
+                        </div>
+                        {day.recommendations.length > 0 && (
+                          <div className={styles.recommendations}>
+                            <strong>💡 Рекомендации:</strong>
+                            <ul>
+                              {day.recommendations.map((rec, idx) => (
+                                <li key={idx}>{rec}</li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       )}
     </div>

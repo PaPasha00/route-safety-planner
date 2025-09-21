@@ -28,6 +28,9 @@ export interface RouteAnalysisRequest {
   coordinates: LatLngTuple[];
   elevationData: number[];
   lengthMeters: number;
+  tourismType: string;
+  startDate: string;
+  endDate: string;
 }
 
 export interface GeographicLocation {
@@ -59,12 +62,36 @@ export interface RouteGeometryAnalysis {
   elevationProfile: string;
 }
 
+export interface DailyWeather {
+  date: string;
+  temperature: {
+    min: number;
+    max: number;
+  };
+  conditions: string;
+  precipitation: number;
+  windSpeed: number;
+  description: string;
+}
+
+export interface DailyRoute {
+  day: number;
+  date: string;
+  distance: number;
+  elevationGain: number;
+  description: string;
+  weather: DailyWeather;
+  recommendations: string[];
+}
+
 export interface RouteAnalysisResponse {
   analysis: string;
   stats: RouteGeometryAnalysis;
   terrainType: string;
   geographicContext: GeographicContext;
   formattedGeoContext: string;
+  dailyRoutes: DailyRoute[];
+  totalDays: number;
 }
 
 export interface ApiError {

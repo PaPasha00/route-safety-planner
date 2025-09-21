@@ -15,6 +15,15 @@
 .title {
   margin: 0 0 15px 0;
   color: #2c5530;
+  cursor: move;
+  user-select: none;
+  padding: 5px;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: #f0f0f0;
+  }
 }
 
 .stats {

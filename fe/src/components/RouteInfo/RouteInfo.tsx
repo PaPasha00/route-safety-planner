@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useEffect } from "react";
 import { LatLngTuple, ElevationStats } from "../../types";
 import { formatLength } from "../../helpers/routeCalculations";
+import { useDraggable } from "../../hooks/useDraggable";
 import styles from "./RouteInfo.module.scss";
 
 interface RouteInfoProps {
@@ -18,9 +19,22 @@ const RouteInfo: React.FC<RouteInfoProps> = ({
   loadingElevation,
   onClear,
 }) => {
+  const draggable = useDraggable();
+
+  useEffect(() => {
+    // Активируем перетаскивание
+    draggable.enableDragging();
+
+    return () => {
+      draggable.disableDragging();
+    };
+  }, [draggable]);
+
   return (
-    <div className={styles.routeInfo}>
-      <h4 className={styles.title}>📈 Маршрут нарисован</h4>
+    <div ref={draggable.elementRef} className={styles.routeInfo}>
+      <h4 className={styles.title} onMouseDown={draggable.handleMouseDown}>
+        📈 Маршрут нарисован
+      </h4>
 
       <div className={styles.stats}>
         <p className={styles.stat}>
