@@ -11,6 +11,11 @@ import L from "leaflet";
 
 import RouteAnalyzer from "./components/RouteAnalyze";
 import LeafletDraw from "./components/DrawControl";
+import {
+  calculateElevationStats,
+  getElevationData,
+  simulateElevationData,
+} from "./heplers/height";
 
 // Исправляем иконки маркеров
 delete L.Icon.Default.prototype._getIconUrl;
@@ -91,8 +96,17 @@ function App() {
   const [route, setRoute] = useState<LatLngTuple[] | null>(null);
   const [drawEnabled, setDrawEnabled] = useState(true);
   const [routeLength, setRouteLength] = useState<number>(0);
+  const [elevationData, setElevationData] = useState<number[] | null>(null);
+  const [elevationStats, setElevationStats] = useState<{
+    totalGain: number;
+    totalLoss: number;
+    minElevation: number;
+    maxElevation: number;
+    avgElevation: number;
+  } | null>(null);
+  const [loadingElevation, setLoadingElevation] = useState(false);
 
-  const onCreated = useCallback((e: L.DrawEvents.Created) => {
+  const onCreated = useCallback(async (e: L.DrawEvents.Created) => {
     const { layerType, layer } = e;
 
     if (layerType === "polyline") {
@@ -112,6 +126,27 @@ function App() {
       const length = calculateRouteLength(coords);
       setRouteLength(length);
 
+      // Получаем данные о высотах
+      setLoadingElevation(true);
+      try {
+        const elevations = await getElevationData(coords);
+        setElevationData(elevations);
+
+        const stats = calculateElevationStats(elevations);
+        setElevationStats(stats);
+
+        console.log("Данные о высотах:", stats);
+        console.log("Отдельные высоты:", elevations.slice(0, 5)); // первые 5 высот
+      } catch (error) {
+        console.error("Ошибка получения высот:", error);
+        // Устанавливаем заглушку даже при ошибке
+        const simulatedElevations = simulateElevationData(coords);
+        setElevationData(simulatedElevations);
+        setElevationStats(calculateElevationStats(simulatedElevations));
+      } finally {
+        setLoadingElevation(false);
+      }
+
       console.log("Нарисован маршрут:", coords);
       console.log(`Длина маршрута: ${formatLength(length)}`);
     }
@@ -120,14 +155,10 @@ function App() {
   const handleClear = () => {
     setRoute(null);
     setRouteLength(0);
+    setElevationData(null);
+    setElevationStats(null);
     setDrawEnabled(true);
   };
-
-  const handleDelete = useCallback(() => {
-    setRoute(null);
-    setRouteLength(0);
-    setDrawEnabled(true);
-  }, []);
 
   const drawOptions: L.Control.DrawOptions = {
     position: "topright",
@@ -154,7 +185,12 @@ function App() {
 
   return (
     <div style={{ height: "100vh", width: "100%" }}>
-      <RouteAnalyzer />
+      <RouteAnalyzer
+        route={route}
+        length={Number(formatLength(routeLength).replace(" км", ""))}
+        elevationGain={elevationStats?.totalGain || 0}
+        elevationData={elevationData}
+      />
       <MapContainer
         center={[55.75, 37.62]}
         zoom={10}
@@ -177,7 +213,7 @@ function App() {
         {drawEnabled && <LeafletDraw {...drawOptions} />}
 
         {/* Обработчик событий рисования */}
-        <DrawEventHandler onCreated={onCreated} onDeleted={handleDelete} />
+        <DrawEventHandler onCreated={onCreated} onDeleted={handleClear} />
 
         <ClickHandler />
       </MapContainer>
@@ -186,15 +222,15 @@ function App() {
         <div
           style={{
             position: "absolute",
-            top: 20,
-            right: 20,
+            bottom: 20,
+            left: 20,
             background: "white",
             padding: "15px",
             borderRadius: "8px",
             boxShadow: "0 2px 10px rgba(0,0,0,0.1)",
             zIndex: 1000,
             maxWidth: "400px",
-            maxHeight: "400px",
+            maxHeight: "500px",
             overflowY: "auto",
           }}
         >
@@ -207,6 +243,32 @@ function App() {
             <p style={{ margin: "5px 0" }}>
               <strong>Длина:</strong> {formatLength(routeLength)}
             </p>
+
+            {loadingElevation && (
+              <p style={{ margin: "5px 0", color: "#666" }}>
+                ⏳ Загрузка данных о высотах...
+              </p>
+            )}
+
+            {elevationStats && (
+              <>
+                <p style={{ margin: "5px 0" }}>
+                  <strong>Набор высоты:</strong> {elevationStats.totalGain} м
+                </p>
+                <p style={{ margin: "5px 0" }}>
+                  <strong>Спуск:</strong> {elevationStats.totalLoss} м
+                </p>
+                <p style={{ margin: "5px 0" }}>
+                  <strong>Мин. высота:</strong> {elevationStats.minElevation} м
+                </p>
+                <p style={{ margin: "5px 0" }}>
+                  <strong>Макс. высота:</strong> {elevationStats.maxElevation} м
+                </p>
+                <p style={{ margin: "5px 0" }}>
+                  <strong>Ср. высота:</strong> {elevationStats.avgElevation} м
+                </p>
+              </>
+            )}
           </div>
 
           <p style={{ margin: "10px 0 5px 0" }}>
