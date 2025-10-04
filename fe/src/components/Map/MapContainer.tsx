@@ -7,6 +7,7 @@ import {
   useMap,
   Marker,
   Popup,
+  Circle,
 } from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
@@ -22,6 +23,7 @@ import {
 import { calculateElevationStats } from "../../helpers/routeCalculations";
 import LeafletDraw from "./LeafletDraw";
 import SearchBox from "../Search/SearchBox";
+// @ts-ignore
 import styles from "./MapContainer.module.scss";
 
 // Исправляем иконки маркеров
@@ -33,7 +35,10 @@ L.Icon.Default.mergeOptions({
   shadowUrl: "https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png",
 });
 
-interface MapContainerProps {
+const AnyMarker: any = Marker as any;
+const AnyCircle: any = Circle as any;
+
+interface AppMapContainerProps {
   route: LatLngTuple[] | null;
   onRouteCreated: (
     route: LatLngTuple[],
@@ -43,9 +48,37 @@ interface MapContainerProps {
   ) => void;
   onRouteCleared: () => void;
   drawEnabled: boolean;
+  pickMode?: "start" | "end" | null;
+  onPick?: (coords: LatLngTuple) => void;
+  startPoint?: LatLngTuple | null;
+  endPoint?: LatLngTuple | null;
+  showSearch?: boolean;
 }
 
-// Компонент для обработки поиска и перемещения карты
+function createNumberIcon(num: number, type: "start" | "end") {
+  const innerClass =
+    type === "end" ? styles.numMarkerInnerEnd : styles.numMarkerInner;
+  const html = `<div class=\"${styles.numMarker}\"><div class=\"${innerClass}\">${num}</div></div>`;
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+    popupAnchor: [0, -14],
+  });
+}
+
+function createCurrentIcon() {
+  const html = `<div style=\"width:18px;height:18px;border-radius:9px;background:#2ecc71;border:2px solid #fff;box-shadow:0 0 0 2px rgba(46,204,113,0.5);\"></div>`;
+  return L.divIcon({
+    html,
+    className: "",
+    iconSize: [18, 18],
+    iconAnchor: [9, 9],
+    popupAnchor: [0, -9],
+  });
+}
+
 function SearchHandler({
   searchLocation,
   onLocationFound,
@@ -65,16 +98,47 @@ function SearchHandler({
   return null;
 }
 
-function ClickHandler() {
+function ClickHandler({
+  pickMode,
+  onPick,
+}: {
+  pickMode?: "start" | "end" | null;
+  onPick?: (coords: LatLngTuple) => void;
+}) {
   useMapEvents({
     click(e) {
+      if (pickMode && onPick) {
+        onPick([e.latlng.lat, e.latlng.lng]);
+      }
       console.log("Клик на карте:", e.latlng);
     },
   });
   return null;
 }
 
-// Компонент для обработки событий рисования
+function ZoomButtons({ currentPos }: { currentPos?: LatLngTuple | null }) {
+  const map = useMap();
+  const zoomIn = () => map.setZoom(map.getZoom() + 1);
+  const zoomOut = () => map.setZoom(map.getZoom() - 1);
+  const locate = () => {
+    console.log("[Locate] Clicked. currentPos=", currentPos);
+    if (currentPos) map.setView(currentPos as any, Math.max(map.getZoom(), 15));
+  };
+  return (
+    <div className={styles.zoomButtons}>
+      <button className={styles.zoomBtn} onClick={zoomIn}>
+        +
+      </button>
+      <button className={styles.zoomBtn} onClick={zoomOut}>
+        -
+      </button>
+      <button className={styles.zoomBtn} onClick={locate}>
+        🎯
+      </button>
+    </div>
+  );
+}
+
 function DrawEventHandler({
   onCreated,
   onDeleted,
@@ -105,11 +169,16 @@ function DrawEventHandler({
   return null;
 }
 
-const MapContainer: React.FC<MapContainerProps> = ({
+const MapContainer: React.FC<AppMapContainerProps> = ({
   route,
   onRouteCreated,
   onRouteCleared,
   drawEnabled,
+  pickMode,
+  onPick,
+  startPoint,
+  endPoint,
+  showSearch,
 }) => {
   const [searchLocation, setSearchLocation] = useState<LatLngTuple | null>(
     null
@@ -119,15 +188,71 @@ const MapContainer: React.FC<MapContainerProps> = ({
     name: string;
   } | null>(null);
 
-  const handleLocationFound = useCallback(
-    (coords: LatLngTuple, name?: string) => {
-      setSearchLocation(coords);
-      if (name) {
-        setSearchMarker({ coords, name });
+  const [currentPos, setCurrentPos] = useState<LatLngTuple | null>(null);
+  const [accuracy, setAccuracy] = useState<number | null>(null);
+  const hasCenteredRef = useRef(false);
+
+  useEffect(() => {
+    if (!navigator.geolocation) {
+      console.warn("[Geolocation] not supported by browser");
+      return;
+    }
+    console.log("[Geolocation] requesting position...");
+    const success = (pos: GeolocationPosition) => {
+      const { latitude, longitude, accuracy } = pos.coords;
+      const coords: LatLngTuple = [latitude, longitude];
+      console.log("[Geolocation] success:", { latitude, longitude, accuracy });
+      setCurrentPos(coords);
+      setAccuracy(accuracy || null);
+    };
+    const error = (err: GeolocationPositionError) => {
+      console.error("[Geolocation] error:", {
+        code: err.code,
+        message: err.message,
+      });
+    };
+    navigator.geolocation.getCurrentPosition(success, error, {
+      enableHighAccuracy: true,
+      maximumAge: 10000,
+      timeout: 10000,
+    });
+    const watchId = navigator.geolocation.watchPosition(
+      (pos) => {
+        const { latitude, longitude, accuracy } = pos.coords;
+        console.log("[Geolocation] watch update:", {
+          latitude,
+          longitude,
+          accuracy,
+        });
+        success(pos);
+      },
+      error,
+      {
+        enableHighAccuracy: true,
+        maximumAge: 10000,
+        timeout: 20000,
       }
-    },
-    []
-  );
+    );
+    return () => navigator.geolocation.clearWatch(watchId);
+  }, []);
+
+  useEffect(() => {
+    if (currentPos) {
+      console.log("[Render] currentPos marker:", { currentPos, accuracy });
+    }
+  }, [currentPos, accuracy]);
+
+  function AutoCenter() {
+    const map = useMap();
+    useEffect(() => {
+      if (currentPos && !hasCenteredRef.current) {
+        console.log("[AutoCenter] center map to", currentPos);
+        map.setView(currentPos as any, Math.max(map.getZoom(), 14));
+        hasCenteredRef.current = true;
+      }
+    }, [currentPos, map]);
+    return null;
+  }
 
   const onCreated = useCallback(
     async (e: L.DrawEvents.Created) => {
@@ -137,32 +262,22 @@ const MapContainer: React.FC<MapContainerProps> = ({
         const polyline = layer as L.Polyline;
         const latLngs = polyline.getLatLngs();
 
-        // Преобразуем LatLng объекты в кортежи [number, number]
         const coords: LatLngTuple[] = latLngs.map((latLng: any) => [
           latLng.lat,
           latLng.lng,
         ]) as LatLngTuple[];
 
-        // Рассчитываем длину маршрута
         const length = calculateRouteLength(coords);
 
-        // Получаем данные о высотах
         try {
           const elevations = await getElevationData(coords);
           const stats = calculateElevationStats(elevations);
           onRouteCreated(coords, length, elevations, stats);
-          console.log("Данные о высотах:", stats);
-          console.log("Отдельные высоты:", elevations.slice(0, 5)); // первые 5 высот
         } catch (error) {
-          console.error("Ошибка получения высот:", error);
-          // Устанавливаем заглушку даже при ошибке
           const simulatedElevations = simulateElevationData(coords);
           const stats = calculateElevationStats(simulatedElevations);
           onRouteCreated(coords, length, simulatedElevations, stats);
         }
-
-        console.log("Нарисован маршрут:", coords);
-        console.log(`Длина маршрута: ${formatLength(length)}`);
       }
     },
     [onRouteCreated]
@@ -191,34 +306,83 @@ const MapContainer: React.FC<MapContainerProps> = ({
     },
   };
 
+  const MapContainerAny: any = LeafletMapContainer as any;
+
   return (
     <div className={styles.mapContainer}>
-      <SearchBox onLocationFound={handleLocationFound} />
+      {showSearch && (
+        <SearchBox onLocationFound={(coords) => setSearchLocation(coords)} />
+      )}
 
-      <LeafletMapContainer
+      <MapContainerAny
         center={[55.75, 37.62]}
         zoom={10}
         className={styles.map}
+        zoomControl={false}
       >
-        {/* Русские тайлы OpenStreetMap */}
-        <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-          attribution="© OpenStreetMap contributors"
-        />
+        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer url="https://tile.openstreetmap.ru/{z}/{x}/{y}.png" />
 
-        {/* Дополнительные русские тайлы для лучшего отображения */}
-        <TileLayer
-          url="https://tile.openstreetmap.ru/{z}/{x}/{y}.png"
-          attribution="© OpenStreetMap Russia"
-          maxZoom={18}
-        />
+        <ZoomButtons currentPos={currentPos} />
+        <AutoCenter />
 
-        {/* Отображаем маршрут */}
-        {route && <Polyline positions={route} color="#3388ff" weight={4} />}
+        {route && (
+          <Polyline
+            positions={route}
+            pathOptions={{ color: "#3388ff", weight: 4 }}
+          />
+        )}
 
-        {/* Маркер найденного места */}
+        {startPoint && (
+          <AnyMarker position={startPoint} icon={createNumberIcon(1, "start")}>
+            <Popup>
+              <div>
+                <strong>Старт</strong>
+                <br />
+                {startPoint[0].toFixed(6)}, {startPoint[1].toFixed(6)}
+              </div>
+            </Popup>
+          </AnyMarker>
+        )}
+        {endPoint && (
+          <AnyMarker position={endPoint} icon={createNumberIcon(2, "end")}>
+            <Popup>
+              <div>
+                <strong>Финиш</strong>
+                <br />
+                {endPoint[0].toFixed(6)}, {endPoint[1].toFixed(6)}
+              </div>
+            </Popup>
+          </AnyMarker>
+        )}
+
+        {currentPos && (
+          <>
+            <AnyMarker position={currentPos} icon={createCurrentIcon()}>
+              <Popup>
+                <div>
+                  <strong>Мое местоположение</strong>
+                  <br />
+                  {currentPos[0].toFixed(6)}, {currentPos[1].toFixed(6)}
+                </div>
+              </Popup>
+            </AnyMarker>
+            {accuracy && (
+              <AnyCircle
+                center={currentPos}
+                radius={accuracy}
+                pathOptions={{
+                  color: "#2ecc71",
+                  opacity: 0.3,
+                  fillOpacity: 0.1,
+                }}
+              />
+            )}
+          </>
+        )}
+
         {searchMarker && (
-          <Marker position={searchMarker.coords}>
+          <AnyMarker position={searchMarker.coords}>
             <Popup>
               <div>
                 <strong>{searchMarker.name}</strong>
@@ -227,23 +391,18 @@ const MapContainer: React.FC<MapContainerProps> = ({
                 {searchMarker.coords[1].toFixed(6)}
               </div>
             </Popup>
-          </Marker>
+          </AnyMarker>
         )}
 
-        {/* Компонент рисования */}
         {drawEnabled && <LeafletDraw {...drawOptions} />}
 
-        {/* Обработчик событий рисования */}
         <DrawEventHandler onCreated={onCreated} onDeleted={onRouteCleared} />
-
-        {/* Обработчик поиска */}
         <SearchHandler
           searchLocation={searchLocation}
-          onLocationFound={handleLocationFound}
+          onLocationFound={(coords) => setSearchLocation(coords)}
         />
-
-        <ClickHandler />
-      </LeafletMapContainer>
+        <ClickHandler pickMode={pickMode} onPick={onPick} />
+      </MapContainerAny>
     </div>
   );
 };

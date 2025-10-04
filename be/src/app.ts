@@ -3,6 +3,7 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import elevationRoutes from './routes/elevationRoutes';
 import routeAnalysisRoutes from './routes/routeAnalysisRoutes';
+import mapRoutes from './routes/mapRoutes';
 
 // Загружаем переменные окружения
 dotenv.config();
@@ -20,6 +21,7 @@ export function createApp(): express.Application {
   // Routes
   app.use('/api', elevationRoutes);
   app.use('/api', routeAnalysisRoutes);
+  app.use('/api/map', mapRoutes);
 
   // Health check endpoint
   app.get('/health', (req, res) => {
