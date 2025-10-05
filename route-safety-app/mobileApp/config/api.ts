@@ -1,0 +1,60 @@
+import { Platform } from "react-native";
+import Constants from "expo-constants";
+
+// Priority:
+// 1) EXPO_PUBLIC_API_BASE_URL env (best for production and tunnels)
+// 2) Derive IP from Expo debugger host in dev
+// 3) Sensible platform defaults
+function resolveBaseUrl(): string {
+  const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
+  if (envUrl) return envUrl.replace(/\/$/, "");
+
+  // Try derive from debuggerHost (e.g., 192.168.1.10:19000)
+  const dbgHost = (Constants as any)?.expoConfig?.hostUri || (Constants as any)?.expoConfig?.debuggerHost || (Constants as any)?.manifest2?.extra?.expoGo?.debuggerHost || (Constants as any)?.manifest?.debuggerHost;
+  if (dbgHost && typeof dbgHost === "string" && dbgHost.includes(":")) {
+    const host = dbgHost.split(":")[0];
+    return `http://${host}:3000`;
+  }
+
+  // Fallbacks
+  if (Platform.OS === "android") {
+    // Android emulator special host to reach host machine
+    return "http://10.0.2.2:3000";
+  }
+  return "http://localhost:3000";
+}
+
+export const API_CONFIG = {
+  BASE_URL: resolveBaseUrl(),
+  ENDPOINTS: {
+    ANALYZE_ROUTE: "/api/analyze-route",
+    ELEVATION: "/api/elevation",
+    MAP_IMAGE: "/api/map/image",
+  },
+};
+
+export function getApiUrl(endpoint: string, params?: Record<string, string | number | boolean | undefined | null>): string {
+  const base = API_CONFIG.BASE_URL.replace(/\/$/, "");
+  const path = endpoint.startsWith("/") ? endpoint : `/${endpoint}`;
+  const url = new URL(base + path);
+  if (params) {
+    Object.entries(params).forEach(([k, v]) => {
+      if (v !== undefined && v !== null) url.searchParams.append(k, String(v));
+    });
+  }
+  return url.toString();
+}
+
+export async function apiPost<T>(endpoint: string, body: unknown, init?: RequestInit): Promise<T> {
+  const res = await fetch(getApiUrl(endpoint), {
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    body: JSON.stringify(body ?? {}),
+    ...init,
+  });
+  if (!res.ok) {
+    const text = await res.text().catch(() => "");
+    throw new Error(`API ${endpoint} failed: ${res.status} ${text}`);
+  }
+  return (await res.json()) as T;
+}
