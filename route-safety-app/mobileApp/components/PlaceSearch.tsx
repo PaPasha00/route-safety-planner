@@ -1,5 +1,21 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { View, TextInput, FlatList, TouchableOpacity, Text, StyleSheet } from "react-native";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  forwardRef,
+  useImperativeHandle,
+} from "react";
+import {
+  View,
+  TextInput,
+  FlatList,
+  TouchableOpacity,
+  Text,
+  StyleSheet,
+} from "react-native";
+import { BlurView } from "expo-blur";
 
 export interface PlaceResult {
   place_id: string;
@@ -10,103 +26,134 @@ export interface PlaceResult {
 
 interface PlaceSearchProps {
   onSelect: (place: PlaceResult) => void;
+  visible?: boolean;
 }
 
-export default function PlaceSearch({ onSelect }: PlaceSearchProps) {
-  const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PlaceResult[]>([]);
-  const [loading, setLoading] = useState(false);
-  const controllerRef = useRef<AbortController | null>(null);
+export interface PlaceSearchHandle {
+  blur: () => void;
+}
 
-  const search = useCallback(async (q: string) => {
-    if (!q || q.trim().length < 2) {
-      setResults([]);
-      return;
-    }
-    try {
-      controllerRef.current?.abort();
-      const ctrl = new AbortController();
-      controllerRef.current = ctrl;
-      setLoading(true);
-      const resp = await fetch(
-        `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(q)}&limit=8&addressdetails=1&accept-language=ru`,
-        { signal: ctrl.signal, headers: { "User-Agent": "route-safety-app" } }
-      );
-      if (!resp.ok) throw new Error("search failed");
-      const data = (await resp.json()) as PlaceResult[];
-      setResults(data);
-    } catch (e) {
-      if ((e as any).name !== "AbortError") {
+const PlaceSearch = forwardRef<PlaceSearchHandle, PlaceSearchProps>(
+  function PlaceSearch({ onSelect, visible = true }, ref) {
+    const [query, setQuery] = useState("");
+    const [results, setResults] = useState<PlaceResult[]>([]);
+    const [loading, setLoading] = useState(false);
+    const [focused, setFocused] = useState(false);
+    const controllerRef = useRef<AbortController | null>(null);
+    const inputRef = useRef<TextInput>(null);
+
+    useImperativeHandle(
+      ref,
+      () => ({
+        blur: () => {
+          setFocused(false);
+          setResults([]);
+          inputRef.current?.blur();
+        },
+      }),
+      []
+    );
+
+    const search = useCallback(async (q: string) => {
+      if (!q || q.trim().length < 2) {
         setResults([]);
+        return;
       }
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+      try {
+        controllerRef.current?.abort();
+        const ctrl = new AbortController();
+        controllerRef.current = ctrl;
+        setLoading(true);
+        const resp = await fetch(
+          `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+            q
+          )}&limit=8&addressdetails=1&accept-language=ru`,
+          { signal: ctrl.signal, headers: { "User-Agent": "route-safety-app" } }
+        );
+        if (!resp.ok) throw new Error("search failed");
+        const data = (await resp.json()) as PlaceResult[];
+        setResults(data);
+      } catch (e) {
+        if ((e as any).name !== "AbortError") {
+          setResults([]);
+        }
+      } finally {
+        setLoading(false);
+      }
+    }, []);
 
-  // debounce
-  useEffect(() => {
-    const id = setTimeout(() => search(query), 350);
-    return () => clearTimeout(id);
-  }, [query, search]);
+    useEffect(() => {
+      const id = setTimeout(() => search(query), 350);
+      return () => clearTimeout(id);
+    }, [query, search]);
 
-  const renderItem = useCallback(({ item }: { item: PlaceResult }) => (
-    <TouchableOpacity style={styles.item} onPress={() => onSelect(item)}>
-      <Text style={styles.itemText} numberOfLines={2}>{item.display_name}</Text>
-    </TouchableOpacity>
-  ), [onSelect]);
+    const renderItem = useCallback(
+      ({ item }: { item: PlaceResult }) => (
+        <TouchableOpacity style={styles.item} onPress={() => onSelect(item)}>
+          <Text style={styles.itemText} numberOfLines={2}>
+            {item.display_name}
+          </Text>
+        </TouchableOpacity>
+      ),
+      [onSelect]
+    );
 
-  return (
-    <View style={styles.container}>
-      <View style={styles.searchBox}>
-        <TextInput
-          style={styles.input}
-          placeholder="Поиск места (город, адрес, объект)"
-          value={query}
-          onChangeText={setQuery}
-          returnKeyType="search"
-        />
-      </View>
-      {results.length > 0 && (
-        <View style={styles.results}>
-          <FlatList
-            keyboardShouldPersistTaps="handled"
-            data={results}
-            keyExtractor={(i) => i.place_id}
-            renderItem={renderItem}
+    if (!visible) return null;
+
+    return (
+      <View style={styles.container}>
+        <BlurView intensity={40} tint="dark" style={[styles.searchBox]}>
+          <TextInput
+            ref={inputRef}
+            style={styles.input}
+            placeholder="Поиск места (город, адрес, объект)"
+            value={query}
+            onChangeText={setQuery}
+            returnKeyType="search"
+            placeholderTextColor="#aaa"
+            onFocus={() => setFocused(true)}
+            onBlur={() => setFocused(false)}
           />
-        </View>
-      )}
-    </View>
-  );
-}
+        </BlurView>
+        {results.length > 0 && (
+          <View style={styles.results}>
+            <FlatList
+              keyboardShouldPersistTaps="handled"
+              data={results}
+              keyExtractor={(i) => i.place_id}
+              renderItem={renderItem}
+            />
+          </View>
+        )}
+      </View>
+    );
+  }
+);
+
+export default PlaceSearch;
 
 const styles = StyleSheet.create({
   container: {
     position: "absolute",
-    top: 16,
-    left: 12,
-    right: 12,
+    top: 66,
+    left: 30,
+    right: 30,
     zIndex: 1000,
   },
   searchBox: {
-    backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 30,
     paddingHorizontal: 12,
-    paddingVertical: 8,
-    shadowColor: "#000",
-    shadowOpacity: 0.15,
-    shadowRadius: 6,
-    shadowOffset: { width: 0, height: 2 },
-    elevation: 3,
+    paddingVertical: 12,
+    overflow: "hidden",
   },
   input: {
     fontSize: 16,
+    color: "#fff",
   },
   results: {
     marginTop: 8,
     backgroundColor: "#fff",
-    borderRadius: 10,
+    borderRadius: 12,
     maxHeight: 240,
     overflow: "hidden",
     shadowColor: "#000",

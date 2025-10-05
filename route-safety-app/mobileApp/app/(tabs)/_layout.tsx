@@ -1,40 +1,66 @@
 import { Ionicons } from "@expo/vector-icons";
 import { Tabs } from "expo-router";
+import { BlurView } from "expo-blur";
 
 export default function TabLayout() {
   return (
     <Tabs
+      initialRouteName="home/index"
       screenOptions={{
-        tabBarActiveTintColor: "#007AFF",
+        tabBarActiveTintColor: "#fff",
         tabBarInactiveTintColor: "#8E8E93",
-        tabBarStyle: {
-          backgroundColor: "#FFFFFF",
-          borderTopWidth: 1,
-          borderTopColor: "#E5E5EA",
-          paddingBottom: 5,
-          paddingTop: 5,
-          height: 80,
+        tabBarLabelStyle: {
+          fontSize: 12,
+          fontWeight: "600",
+          marginTop: 4,
+          includeFontPadding: false,
+          textAlignVertical: "center",
         },
+        tabBarStyle: {
+          position: "absolute",
+          marginHorizontal: 24,
+          left: 16,
+          right: 16,
+          bottom: 24,
+          height: 65,
+          borderRadius: 60,
+          backgroundColor: "transparent",
+          borderTopWidth: 0,
+          shadowColor: "#000",
+          shadowOpacity: 0.12,
+          shadowRadius: 12,
+          shadowOffset: { width: 0, height: 6 },
+          elevation: 0,
+          paddingVertical: 20,
+          overflow: "hidden",
+        },
+        tabBarBackground: () => (
+          <BlurView intensity={40} tint="dark" style={{ flex: 1 }} />
+        ),
         headerStyle: {
-          backgroundColor: "#FFFFFF",
+          backgroundColor: "rgba(0, 0, 0, 0)",
         },
         headerTintColor: "#000",
         headerTitleStyle: {
           fontWeight: "bold",
         },
+        sceneStyle: {
+          backgroundColor: "transparent",
+        },
       }}
     >
       <Tabs.Screen
-        name="index"
+        name="home/index"
         options={{
           title: "Главная",
+          headerShown: false,
           tabBarIcon: ({ color, size }) => (
             <Ionicons name="home" size={size} color={color} />
           ),
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="explore/index"
         options={{
           title: "Исследовать",
           tabBarIcon: ({ color, size }) => (
@@ -43,7 +69,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="profile"
+        name="profile/index"
         options={{
           title: "Профиль",
           tabBarIcon: ({ color, size }) => (
@@ -52,7 +78,7 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
-        name="settings"
+        name="settings/index"
         options={{
           title: "Настройки",
           tabBarIcon: ({ color, size }) => (
