@@ -184,14 +184,20 @@ export default function HomeScreen() {
       const pts = (
         roadRouting && routePolyline ? routePolyline : waypoints
       ).map((p) => ({ lat: p.latitude, lng: p.longitude }));
+      const coords = pts.map((p) => [p.lat, p.lng] as [number, number]);
+      const lengthKm = totalKm;
       const body = {
-        points: pts,
+        coordinates: coords,
+        lengthKm,
+        lengthMeters: Math.round(lengthKm * 1000),
+        elevationGain: 0,
         tourismType: "пеший",
         startDate: new Date().toISOString().slice(0, 10),
         endDate: new Date().toISOString().slice(0, 10),
+        elevationData: [0, 0],
       };
       const url = getApiUrl(API_CONFIG.ENDPOINTS.ANALYZE_ROUTE);
-      console.error("[ANALYZE] POST", url, "payload points:", pts.length);
+      console.error("[ANALYZE] POST", url, "payload points:", pts.length, body);
       const result = await apiPost<any>(
         API_CONFIG.ENDPOINTS.ANALYZE_ROUTE,
         body
@@ -467,7 +473,10 @@ export default function HomeScreen() {
                     <Text style={{ color: "#888", fontSize: 16 }}>Закрыть</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
-                    onPress={goToResults}
+                    onPress={() => {
+                      setInfoOpen(false);
+                      setAnalyzeOpen(true);
+                    }}
                     style={styles.analyzePrimaryButton}
                   >
                     <Text style={styles.analyzePrimaryText}>Анализ ИИ</Text>

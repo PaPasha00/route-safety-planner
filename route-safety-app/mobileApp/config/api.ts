@@ -2,10 +2,14 @@ import { Platform } from "react-native";
 import Constants from "expo-constants";
 
 // Priority:
+// 0) app.json expo.extra.EXPO_PUBLIC_API_BASE_URL
 // 1) EXPO_PUBLIC_API_BASE_URL env (best for production and tunnels)
 // 2) Derive IP from Expo debugger host in dev
 // 3) Sensible platform defaults
 function resolveBaseUrl(): string {
+  const cfgUrl = (Constants as any)?.expoConfig?.extra?.EXPO_PUBLIC_API_BASE_URL || (Constants as any)?.manifest?.extra?.EXPO_PUBLIC_API_BASE_URL;
+  if (cfgUrl) return String(cfgUrl).trim().replace(/\/$/, "");
+
   const envUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (envUrl) return envUrl.replace(/\/$/, "");
 
