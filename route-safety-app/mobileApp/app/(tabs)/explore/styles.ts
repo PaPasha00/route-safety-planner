@@ -11,6 +11,7 @@ export const styles = StyleSheet.create({
   container: {
     flex: 1,
     padding: 16,
+    paddingTop: 60, // Add top padding for transparent header
   },
   title: {
     fontSize: 28,

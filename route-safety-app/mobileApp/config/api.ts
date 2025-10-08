@@ -17,15 +17,15 @@ function resolveBaseUrl(): string {
   const dbgHost = (Constants as any)?.expoConfig?.hostUri || (Constants as any)?.expoConfig?.debuggerHost || (Constants as any)?.manifest2?.extra?.expoGo?.debuggerHost || (Constants as any)?.manifest?.debuggerHost;
   if (dbgHost && typeof dbgHost === "string" && dbgHost.includes(":")) {
     const host = dbgHost.split(":")[0];
-    return `http://${host}:3000`;
+    return `http://${host}:3001`;
   }
 
   // Fallbacks
   if (Platform.OS === "android") {
     // Android emulator special host to reach host machine
-    return "http://10.0.2.2:3000";
+    return "http://10.0.2.2:3001";
   }
-  return "http://localhost:3000";
+  return "http://localhost:3001";
 }
 
 export const API_CONFIG = {

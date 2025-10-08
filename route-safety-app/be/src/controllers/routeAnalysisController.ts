@@ -66,9 +66,16 @@ export class RouteAnalysisController {
       const result = await routeAnalysisService.analyzeRoute(requestData);
       res.json(result);
     } catch (error: any) {
-      console.error('[ANALYZE:ERR]', error?.message, error?.response?.status, error?.response?.data);
-      const apiError: ApiError = { error: 'Не удалось проанализировать маршрут' };
-      res.status(500).json(apiError);
+      const status = error?.response?.status;
+      const data = error?.response?.data;
+      console.error('[ANALYZE:ERR]', error?.message, status, data);
+
+      const apiError: ApiError = {
+        error: status
+          ? `AI provider error ${status}: ${typeof data === 'string' ? data : JSON.stringify(data)}`
+          : 'Не удалось проанализировать маршрут'
+      };
+      res.status(status || 500).json(apiError);
     }
   }
 }

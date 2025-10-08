@@ -8,7 +8,10 @@ import {
   Pressable,
   ScrollView,
   Alert,
+  TextInput,
+  Platform,
 } from "react-native";
+import DateTimePicker from "@react-native-community/datetimepicker";
 import MapView, {
   Marker,
   Polyline,
@@ -27,6 +30,7 @@ import { Ionicons } from "@expo/vector-icons";
 import { apiPost, API_CONFIG, getApiUrl } from "../../../config/api";
 import { router } from "expo-router";
 import { setAnalysisResult } from "../../../store/analysisStore";
+import { getElevationData } from "./helpers";
 
 function haversineKm(a: LatLng, b: LatLng): number {
   const R = 6371;
@@ -72,10 +76,39 @@ export default function HomeScreen() {
   const [centeredToUser, setCenteredToUser] = useState(false);
   const [analyzeOpen, setAnalyzeOpen] = useState(false);
   const [analyzeLoading, setAnalyzeLoading] = useState(false);
+  const [loadingStep, setLoadingStep] = useState(0);
+  const [loadingProgress, setLoadingProgress] = useState(0);
   const [infoOpen, setInfoOpen] = useState(false);
+  const [showCoordinates, setShowCoordinates] = useState(false);
   const [analysisDone, setAnalysisDone] = useState(false);
+  const [showStartDatePicker, setShowStartDatePicker] = useState(false);
+  const [showEndDatePicker, setShowEndDatePicker] = useState(false);
+  const [tourismType, setTourismType] = useState("пеший");
+  const [startDate, setStartDate] = useState(
+    new Date().toISOString().slice(0, 10)
+  );
+  const [endDate, setEndDate] = useState(new Date().toISOString().slice(0, 10));
+  const [startDateObj, setStartDateObj] = useState(new Date());
+  const [endDateObj, setEndDateObj] = useState(new Date());
   const searchRef = useRef<PlaceSearchHandle>(null);
   const mapRef = useRef<MapView>(null);
+
+  const tourismTypes = [
+    "пеший",
+    "велосипедный",
+    "водный",
+    "автомобильный",
+    "воздушный",
+    "мото",
+  ];
+
+  const loadingSteps = [
+    "Получение данных о высотах...",
+    "Анализ географического контекста...",
+    "Расчет геометрии маршрута...",
+    "Анализ ИИ в процессе...",
+    "Формирование отчета...",
+  ];
 
   useEffect(() => {
     (async () => {
@@ -181,20 +214,51 @@ export default function HomeScreen() {
   const confirmAnalyze = async () => {
     try {
       setAnalyzeLoading(true);
-      const pts = (
-        roadRouting && routePolyline ? routePolyline : waypoints
-      ).map((p) => ({ lat: p.latitude, lng: p.longitude }));
+      setLoadingStep(0);
+      setLoadingProgress(0);
+
+      const basePoints =
+        roadRouting && routePolyline ? routePolyline : waypoints;
+      const pts = basePoints.map((p) => ({
+        lat: p.latitude,
+        lng: p.longitude,
+      }));
       const coords = pts.map((p) => [p.lat, p.lng] as [number, number]);
       const lengthKm = totalKm;
+
+      // Step 1: Получение данных о высотах (2-3 сек)
+      setLoadingStep(0);
+      setLoadingProgress(10);
+      const elevations = await getElevationData(basePoints);
+      let gain = 0;
+      for (let i = 1; i < elevations.length; i++) {
+        const delta = elevations[i] - elevations[i - 1];
+        if (delta > 0) gain += delta;
+      }
+
+      // Step 2: Анализ географического контекста (1-2 сек)
+      setLoadingStep(1);
+      setLoadingProgress(30);
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+
+      // Step 3: Расчет геометрии маршрута (0.5 сек)
+      setLoadingStep(2);
+      setLoadingProgress(50);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
+      // Step 4: Анализ ИИ (3-6 сек)
+      setLoadingStep(3);
+      setLoadingProgress(70);
+
       const body = {
         coordinates: coords,
         lengthKm,
         lengthMeters: Math.round(lengthKm * 1000),
-        elevationGain: 0,
-        tourismType: "пеший",
-        startDate: new Date().toISOString().slice(0, 10),
-        endDate: new Date().toISOString().slice(0, 10),
-        elevationData: [0, 0],
+        elevationGain: Math.round(gain),
+        tourismType,
+        startDate,
+        endDate,
+        elevationData: elevations,
       };
       const url = getApiUrl(API_CONFIG.ENDPOINTS.ANALYZE_ROUTE);
       console.error("[ANALYZE] POST", url, "payload points:", pts.length, body);
@@ -202,13 +266,22 @@ export default function HomeScreen() {
         API_CONFIG.ENDPOINTS.ANALYZE_ROUTE,
         body
       );
+
+      // Step 5: Формирование отчета (0.5 сек)
+      setLoadingStep(4);
+      setLoadingProgress(90);
+      await new Promise((resolve) => setTimeout(resolve, 500));
+
       console.log("[ANALYZE] OK", typeof result);
       setAnalysisResult(result);
       setAnalysisDone(true);
+      setLoadingProgress(100);
       setAnalyzeLoading(false);
     } catch (e: any) {
       console.error("[ANALYZE] FAIL", e?.message || e);
       setAnalyzeLoading(false);
+      setLoadingStep(0);
+      setLoadingProgress(0);
       Alert.alert(
         "Ошибка",
         "Не удалось запустить анализ. Проверьте доступность бэкенда."
@@ -220,6 +293,58 @@ export default function HomeScreen() {
     setAnalyzeOpen(false);
     router.push("/(tabs)/explore");
   };
+
+  const handleStartDateChange = (event: any, selectedDate?: Date) => {
+    console.log("[DATE] Start date picker event:", event.type, selectedDate);
+
+    // Закрываем picker на Android после выбора
+    if (Platform.OS === "android") {
+      setShowStartDatePicker(false);
+    }
+
+    // Обновляем дату если она была выбрана
+    if (selectedDate) {
+      setStartDateObj(selectedDate);
+      setStartDate(selectedDate.toISOString().slice(0, 10));
+      console.log(
+        "[DATE] Start date updated to:",
+        selectedDate.toISOString().slice(0, 10)
+      );
+    }
+  };
+
+  const handleEndDateChange = (event: any, selectedDate?: Date) => {
+    console.log("[DATE] End date picker event:", event.type, selectedDate);
+
+    // Закрываем picker на Android после выбора
+    if (Platform.OS === "android") {
+      setShowEndDatePicker(false);
+    }
+
+    // Обновляем дату если она была выбрана
+    if (selectedDate) {
+      setEndDateObj(selectedDate);
+      setEndDate(selectedDate.toISOString().slice(0, 10));
+      console.log(
+        "[DATE] End date updated to:",
+        selectedDate.toISOString().slice(0, 10)
+      );
+    }
+  };
+
+  const [elevation, setElevation] = useState<number[]>([]);
+
+  const elevationSummary = useMemo(() => {
+    if (!elevation || elevation.length === 0) return null;
+    const min = Math.min(...elevation);
+    const max = Math.max(...elevation);
+    let gain = 0;
+    for (let i = 1; i < elevation.length; i++) {
+      const delta = elevation[i] - elevation[i - 1];
+      if (delta > 0) gain += delta;
+    }
+    return { min, max, gain: Math.round(gain), count: elevation.length };
+  }, [elevation]);
 
   const info = useMemo(() => {
     const pts = roadRouting && routePolyline ? routePolyline : waypoints;
@@ -240,6 +365,20 @@ export default function HomeScreen() {
       lengthKm: totalKm,
     };
   }, [roadRouting, routePolyline, waypoints, totalKm]);
+
+  const handleGetElevation = async (points: LatLng[]) => {
+    const data = await getElevationData(points);
+    console.log(data);
+
+    setElevation(data);
+  };
+
+  useEffect(() => {
+    if (info?.points?.length || (0 > 0 && info?.points)) {
+      console.log("get");
+      handleGetElevation(info?.points);
+    }
+  }, [info?.points.length]);
 
   return (
     <View style={styles.container}>
@@ -363,26 +502,168 @@ export default function HomeScreen() {
             style={styles.modalCard}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={{ fontSize: 18, fontWeight: "600", marginBottom: 8 }}>
-              Анализ маршрута
-            </Text>
-            <Text style={{ marginBottom: 4 }}>
-              Точек:{" "}
-              {roadRouting && routePolyline
-                ? routePolyline.length
-                : waypoints.length}
-            </Text>
-            <Text style={{ marginBottom: 4 }}>
-              Длина: {totalKm.toFixed(2)} км
-            </Text>
-            <Text style={{ marginBottom: 12, color: "#666" }}>
-              Включить высоты/районы в отчёт (будут определены бэкендом)
-            </Text>
+            <Text style={styles.modalTitle}>Анализ маршрута</Text>
+
+            <ScrollView
+              style={styles.modalContent}
+              showsVerticalScrollIndicator={false}
+            >
+              {/* Основная информация */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Информация о маршруте</Text>
+                <Text style={{ color: "#666", marginBottom: 8 }}>
+                  Точек:{" "}
+                  {roadRouting && routePolyline
+                    ? routePolyline.length
+                    : waypoints.length}{" "}
+                  • Длина: {totalKm.toFixed(2)} км
+                </Text>
+              </View>
+
+              {/* Тип туризма */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Тип туризма</Text>
+                <View style={styles.pickerContainer}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    style={{ paddingHorizontal: 8 }}
+                  >
+                    <View
+                      style={{
+                        flexDirection: "row",
+                        gap: 8,
+                        paddingVertical: 8,
+                      }}
+                    >
+                      {tourismTypes.map((type) => (
+                        <TouchableOpacity
+                          key={type}
+                          onPress={() => setTourismType(type)}
+                          style={{
+                            paddingHorizontal: 16,
+                            paddingVertical: 8,
+                            borderRadius: 20,
+                            backgroundColor:
+                              tourismType === type ? "#007AFF" : "#f0f0f0",
+                          }}
+                        >
+                          <Text
+                            style={{
+                              color: tourismType === type ? "#fff" : "#333",
+                              fontSize: 14,
+                              fontWeight: "500",
+                            }}
+                          >
+                            {type}
+                          </Text>
+                        </TouchableOpacity>
+                      ))}
+                    </View>
+                  </ScrollView>
+                </View>
+              </View>
+
+              {/* Даты */}
+              <View style={styles.formGroup}>
+                <Text style={styles.formLabel}>Даты похода</Text>
+
+                <View style={styles.dateRow}>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{ fontSize: 12, color: "#666", marginBottom: 4 }}
+                    >
+                      Начало
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dateInput}
+                      onPress={() => {
+                        console.log(
+                          "[DATE] Opening start date picker, current date:",
+                          startDate
+                        );
+                        setShowStartDatePicker(true);
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, color: "#333" }}>
+                        {startDate}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text
+                      style={{ fontSize: 12, color: "#666", marginBottom: 4 }}
+                    >
+                      Конец
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.dateInput}
+                      onPress={() => {
+                        console.log(
+                          "[DATE] Opening end date picker, current date:",
+                          endDate
+                        );
+                        setShowEndDatePicker(true);
+                      }}
+                    >
+                      <Text style={{ fontSize: 16, color: "#333" }}>
+                        {endDate}
+                      </Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+                <Text style={{ fontSize: 12, color: "#999", marginTop: 4 }}>
+                  Нажмите для выбора даты
+                </Text>
+              </View>
+
+              {/* Высоты */}
+              {elevationSummary && (
+                <View style={styles.formGroup}>
+                  <Text style={styles.formLabel}>Данные о высотах</Text>
+                  <View style={styles.elevationSummary}>
+                    <Text style={styles.elevationText}>
+                      Точек: {elevationSummary.count}
+                    </Text>
+                    <Text style={styles.elevationText}>
+                      Мин: {elevationSummary.min} м
+                    </Text>
+                    <Text style={styles.elevationText}>
+                      Макс: {elevationSummary.max} м
+                    </Text>
+                    <Text style={styles.elevationText}>
+                      Набор высоты: {elevationSummary.gain} м
+                    </Text>
+                  </View>
+                </View>
+              )}
+
+              {/* Progress bar during loading */}
+              {analyzeLoading && (
+                <View style={styles.progressContainer}>
+                  <View style={styles.progressBar}>
+                    <View
+                      style={[
+                        styles.progressFill,
+                        { width: `${loadingProgress}%` },
+                      ]}
+                    />
+                  </View>
+                  <Text style={styles.progressText}>
+                    {loadingProgress}% • {loadingSteps[loadingStep]}
+                  </Text>
+                </View>
+              )}
+            </ScrollView>
+
             <View style={styles.modalFooter}>
               {!analysisDone ? (
                 <>
-                  <TouchableOpacity onPress={() => setAnalyzeOpen(false)}>
-                    <Text style={{ color: "#888", fontSize: 16 }}>Отмена</Text>
+                  <TouchableOpacity
+                    onPress={() => setAnalyzeOpen(false)}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={styles.cancelButtonText}>Отмена</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     disabled={analyzeLoading}
@@ -395,7 +676,9 @@ export default function HomeScreen() {
                     {analyzeLoading ? (
                       <>
                         <ActivityIndicator color="#fff" />
-                        <Text style={styles.analyzePrimaryText}>Анализ...</Text>
+                        <Text style={styles.analyzePrimaryText}>
+                          {loadingSteps[loadingStep]}
+                        </Text>
                       </>
                     ) : (
                       <Text style={styles.analyzePrimaryText}>
@@ -406,15 +689,18 @@ export default function HomeScreen() {
                 </>
               ) : (
                 <>
-                  <TouchableOpacity onPress={() => setAnalyzeOpen(false)}>
-                    <Text style={{ color: "#888", fontSize: 16 }}>Закрыть</Text>
+                  <TouchableOpacity
+                    onPress={() => setAnalyzeOpen(false)}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={styles.cancelButtonText}>Закрыть</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={goToResults}
                     style={styles.analyzePrimaryButton}
                   >
                     <Text style={styles.analyzePrimaryText}>
-                      Смотреть результаты анализа
+                      Смотреть результаты
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -435,42 +721,123 @@ export default function HomeScreen() {
           onPress={() => setInfoOpen(false)}
         >
           <Pressable
-            style={styles.modalCard}
+            style={styles.infoModalCard}
             onPress={(e) => e.stopPropagation()}
           >
-            <Text style={{ fontSize: 18, fontWeight: "600", marginBottom: 8 }}>
-              Информация о маршруте
-            </Text>
+            <Text style={styles.infoModalTitle}>Информация о маршруте</Text>
             {info && (
               <>
-                <ScrollView style={{ maxHeight: 360 }}>
-                  <Text style={{ marginBottom: 4 }}>
-                    Длина: {info.lengthKm.toFixed(2)} км
-                  </Text>
-                  <Text style={{ marginBottom: 6 }}>
-                    BBox: [ {info.bbox.minLat.toFixed(4)},{" "}
-                    {info.bbox.minLon.toFixed(4)} ] — [{" "}
-                    {info.bbox.maxLat.toFixed(4)}, {info.bbox.maxLon.toFixed(4)}{" "}
-                    ]
-                  </Text>
-                  <Text style={{ fontWeight: "600", marginBottom: 6 }}>
-                    Точки (lat, lon):
-                  </Text>
-                  {info.points.map((p, i) => (
-                    <Text
-                      key={`${p.latitude}-${p.longitude}-${i}`}
-                      style={{ color: "#333" }}
-                    >
-                      {i + 1}. {p.latitude.toFixed(6)}, {p.longitude.toFixed(6)}
+                <ScrollView
+                  style={{ maxHeight: 400 }}
+                  showsVerticalScrollIndicator={false}
+                >
+                  {/* Основная информация */}
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoSectionTitle}>
+                      📏 Основные параметры
                     </Text>
-                  ))}
-                  <Text style={{ marginTop: 10, color: "#666" }}>
-                    Регионы/районы, высоты будут подтянуты при анализе ИИ
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Длина маршрута:</Text>
+                      <Text style={styles.infoValue}>
+                        {info.lengthKm.toFixed(2)} км
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Количество точек:</Text>
+                      <Text style={styles.infoValue}>{info.points.length}</Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Тип маршрута:</Text>
+                      <Text style={styles.infoValue}>
+                        {roadRouting ? "По дорогам" : "Прямая линия"}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Географические границы */}
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoSectionTitle}>
+                      🗺️ Географические границы
+                    </Text>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Северная граница:</Text>
+                      <Text style={styles.infoValue}>
+                        {info.bbox.maxLat.toFixed(4)}°
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Южная граница:</Text>
+                      <Text style={styles.infoValue}>
+                        {info.bbox.minLat.toFixed(4)}°
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Западная граница:</Text>
+                      <Text style={styles.infoValue}>
+                        {info.bbox.minLon.toFixed(4)}°
+                      </Text>
+                    </View>
+                    <View style={styles.infoRow}>
+                      <Text style={styles.infoLabel}>Восточная граница:</Text>
+                      <Text style={styles.infoValue}>
+                        {info.bbox.maxLon.toFixed(4)}°
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Координаты (скрытые по умолчанию) */}
+                  <View style={styles.infoSection}>
+                    <Text style={styles.infoSectionTitle}>
+                      📍 Координаты точек
+                    </Text>
+                    <TouchableOpacity
+                      style={styles.coordinatesToggle}
+                      onPress={() => setShowCoordinates(!showCoordinates)}
+                    >
+                      <Text style={styles.coordinatesToggleText}>
+                        {showCoordinates
+                          ? "Скрыть координаты"
+                          : "Показать координаты"}
+                      </Text>
+                      <Ionicons
+                        name={showCoordinates ? "chevron-up" : "chevron-down"}
+                        size={16}
+                        color="#007AFF"
+                      />
+                    </TouchableOpacity>
+                    {showCoordinates && (
+                      <View style={styles.coordinatesList}>
+                        {info.points.map((p, i) => (
+                          <Text
+                            key={`${p.latitude}-${p.longitude}-${i}`}
+                            style={styles.coordinateItem}
+                          >
+                            {i + 1}. {p.latitude.toFixed(6)},{" "}
+                            {p.longitude.toFixed(6)}
+                          </Text>
+                        ))}
+                      </View>
+                    )}
+                  </View>
+
+                  <Text
+                    style={{
+                      marginTop: 16,
+                      color: "#666",
+                      fontSize: 12,
+                      textAlign: "center",
+                    }}
+                  >
+                    Регионы, высоты и детальный анализ будут получены при
+                    запуске ИИ-анализа
                   </Text>
                 </ScrollView>
                 <View style={styles.modalFooter}>
-                  <TouchableOpacity onPress={() => setInfoOpen(false)}>
-                    <Text style={{ color: "#888", fontSize: 16 }}>Закрыть</Text>
+                  <TouchableOpacity
+                    onPress={() => setInfoOpen(false)}
+                    style={styles.cancelButton}
+                  >
+                    <Text style={styles.cancelButtonText}>Закрыть</Text>
                   </TouchableOpacity>
                   <TouchableOpacity
                     onPress={() => {
@@ -487,6 +854,283 @@ export default function HomeScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      {/* Date Pickers - Поверх основного модала */}
+      {showStartDatePicker && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={showStartDatePicker}
+          onRequestClose={() => setShowStartDatePicker(false)}
+          statusBarTranslucent
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.8)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 16,
+                padding: 24,
+                margin: 20,
+                minWidth: 320,
+                maxWidth: "90%",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 20,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "600",
+                  marginBottom: 20,
+                  textAlign: "center",
+                  color: "#333",
+                }}
+              >
+                Выберите дату начала
+              </Text>
+
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: "#666",
+                  marginBottom: 10,
+                  textAlign: "center",
+                }}
+              >
+                Платформа: {Platform.OS} | Текущая дата: {startDate}
+              </Text>
+
+              <View
+                style={{
+                  alignItems: "center",
+                  marginBottom: 20,
+                  minHeight: 100,
+                  justifyContent: "center",
+                  backgroundColor: "#f8f9fa",
+                  borderRadius: 8,
+                  padding: 10,
+                }}
+              >
+                <DateTimePicker
+                  value={startDateObj}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={handleStartDateChange}
+                  minimumDate={new Date()}
+                />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#666",
+                    marginTop: 8,
+                    textAlign: "center",
+                  }}
+                >
+                  {Platform.OS === "android"
+                    ? "Выберите дату выше и нажмите 'Готово'"
+                    : "Поворачивайте колесики для выбора даты"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log("[DATE] Start date picker cancelled");
+                    setShowStartDatePicker(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#e1e5e9",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#666", fontSize: 16, fontWeight: "500" }}
+                  >
+                    Отмена
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log(
+                      "[DATE] Start date picker confirmed, date:",
+                      startDateObj
+                    );
+                    setStartDate(startDateObj.toISOString().slice(0, 10));
+                    setShowStartDatePicker(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 12,
+                    backgroundColor: "#007AFF",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}
+                  >
+                    Готово
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+
+      {showEndDatePicker && (
+        <Modal
+          transparent
+          animationType="fade"
+          visible={showEndDatePicker}
+          onRequestClose={() => setShowEndDatePicker(false)}
+          statusBarTranslucent
+        >
+          <View
+            style={{
+              flex: 1,
+              backgroundColor: "rgba(0,0,0,0.8)",
+              justifyContent: "center",
+              alignItems: "center",
+            }}
+          >
+            <View
+              style={{
+                backgroundColor: "#fff",
+                borderRadius: 16,
+                padding: 24,
+                margin: 20,
+                minWidth: 320,
+                maxWidth: "90%",
+                shadowColor: "#000",
+                shadowOffset: { width: 0, height: 10 },
+                shadowOpacity: 0.3,
+                shadowRadius: 20,
+                elevation: 20,
+              }}
+            >
+              <Text
+                style={{
+                  fontSize: 20,
+                  fontWeight: "600",
+                  marginBottom: 20,
+                  textAlign: "center",
+                  color: "#333",
+                }}
+              >
+                Выберите дату окончания
+              </Text>
+
+              <Text
+                style={{
+                  fontSize: 14,
+                  color: "#666",
+                  marginBottom: 10,
+                  textAlign: "center",
+                }}
+              >
+                Платформа: {Platform.OS} | Текущая дата: {endDate}
+              </Text>
+
+              <View
+                style={{
+                  alignItems: "center",
+                  marginBottom: 20,
+                  minHeight: 100,
+                  justifyContent: "center",
+                  backgroundColor: "#f8f9fa",
+                  borderRadius: 8,
+                  padding: 10,
+                }}
+              >
+                <DateTimePicker
+                  value={endDateObj}
+                  mode="date"
+                  display={Platform.OS === "ios" ? "spinner" : "default"}
+                  onChange={handleEndDateChange}
+                  minimumDate={startDateObj}
+                />
+                <Text
+                  style={{
+                    fontSize: 12,
+                    color: "#666",
+                    marginTop: 8,
+                    textAlign: "center",
+                  }}
+                >
+                  {Platform.OS === "android"
+                    ? "Выберите дату выше и нажмите 'Готово'"
+                    : "Поворачивайте колесики для выбора даты"}
+                </Text>
+              </View>
+
+              <View style={{ flexDirection: "row", gap: 12 }}>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log("[DATE] End date picker cancelled");
+                    setShowEndDatePicker(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: "#e1e5e9",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#666", fontSize: 16, fontWeight: "500" }}
+                  >
+                    Отмена
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  onPress={() => {
+                    console.log(
+                      "[DATE] End date picker confirmed, date:",
+                      endDateObj
+                    );
+                    setEndDate(endDateObj.toISOString().slice(0, 10));
+                    setShowEndDatePicker(false);
+                  }}
+                  style={{
+                    flex: 1,
+                    paddingVertical: 12,
+                    paddingHorizontal: 20,
+                    borderRadius: 12,
+                    backgroundColor: "#007AFF",
+                    alignItems: "center",
+                  }}
+                >
+                  <Text
+                    style={{ color: "#fff", fontSize: 16, fontWeight: "600" }}
+                  >
+                    Готово
+                  </Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }

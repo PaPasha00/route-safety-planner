@@ -86,6 +86,7 @@ export interface DailyRoute {
 
 export interface RouteAnalysisResponse {
   analysis: string;
+  analysisStructured?: any;
   stats: RouteGeometryAnalysis;
   terrainType: string;
   geographicContext: GeographicContext;

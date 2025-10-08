@@ -37,7 +37,7 @@ export const getElevationData = async (coordinates: LatLngTuple[]): Promise<numb
       
       if (validElevations.length === 0) {
         console.warn('All elevation data is invalid, using simulation');
-        return simulateElevationData(coordinates);
+        // return simulateElevationData(coordinates);
       }
       
       if (validElevations.length < elevations.length) {
@@ -57,69 +57,69 @@ export const getElevationData = async (coordinates: LatLngTuple[]): Promise<numb
   } catch (error) {
     console.error('Error fetching elevation data:', error);
     
-    // Возвращаем заглушку с случайными высотами для демонстрации
-    console.log('Using simulated elevation data for demo');
-    return simulateElevationData(coordinates);
+    // // Возвращаем заглушку с случайными высотами для демонстрации
+    // console.log('Using simulated elevation data for demo');
+    // return simulateElevationData(coordinates);
   }
 };
 
 /**
  * Генерирует демо-данные о высотах с учетом региона
  */
-export const simulateElevationData = (coordinates: LatLngTuple[]): number[] => {
-  if (coordinates.length === 0) return [];
+// export const simulateElevationData = (coordinates: LatLngTuple[]): number[] => {
+//   if (coordinates.length === 0) return [];
   
-  const elevations: number[] = [];
+//   const elevations: number[] = [];
   
-  // Определяем базовую высоту в зависимости от региона
-  const getBaseElevation = (lat: number, lng: number): number => {
-    // Гималаи (включая Эверест)
-    if (lat >= 27 && lat <= 30 && lng >= 85 && lng <= 88) {
-      return 4000 + Math.random() * 2000; // 4000-6000м
-    }
+//   // Определяем базовую высоту в зависимости от региона
+//   const getBaseElevation = (lat: number, lng: number): number => {
+//     // Гималаи (включая Эверест)
+//     if (lat >= 27 && lat <= 30 && lng >= 85 && lng <= 88) {
+//       return 4000 + Math.random() * 2000; // 4000-6000м
+//     }
     
-    // Альпы
-    if (lat >= 45 && lat <= 48 && lng >= 6 && lng <= 14) {
-      return 1000 + Math.random() * 2000; // 1000-3000м
-    }
+//     // Альпы
+//     if (lat >= 45 && lat <= 48 && lng >= 6 && lng <= 14) {
+//       return 1000 + Math.random() * 2000; // 1000-3000м
+//     }
     
-    // Кавказ
-    if (lat >= 42 && lat <= 44 && lng >= 40 && lng <= 46) {
-      return 1500 + Math.random() * 1500; // 1500-3000м
-    }
+//     // Кавказ
+//     if (lat >= 42 && lat <= 44 && lng >= 40 && lng <= 46) {
+//       return 1500 + Math.random() * 1500; // 1500-3000м
+//     }
     
-    // Урал
-    if (lat >= 55 && lat <= 60 && lng >= 55 && lng <= 65) {
-      return 200 + Math.random() * 800; // 200-1000м
-    }
+//     // Урал
+//     if (lat >= 55 && lat <= 60 && lng >= 55 && lng <= 65) {
+//       return 200 + Math.random() * 800; // 200-1000м
+//     }
     
-    // Прибрежные районы
-    if (Math.abs(lat) < 30) {
-      return 0 + Math.random() * 100; // 0-100м
-    }
+//     // Прибрежные районы
+//     if (Math.abs(lat) < 30) {
+//       return 0 + Math.random() * 100; // 0-100м
+//     }
     
-    // Обычные равнины
-    return 100 + Math.random() * 300; // 100-400м
-  };
+//     // Обычные равнины
+//     return 100 + Math.random() * 300; // 100-400м
+//   };
   
-  let currentElevation = getBaseElevation(coordinates[0][0], coordinates[0][1]);
+//   let currentElevation = getBaseElevation(coordinates[0][0], coordinates[0][1]);
   
-  for (let i = 0; i < coordinates.length; i++) {
-    const [lat, lng] = coordinates[i];
+//   for (let i = 0; i < coordinates.length; i++) {
+//     const [lat, lng] = coordinates[i];
     
-    // Обновляем базовую высоту для текущей точки
-    const baseElevation = getBaseElevation(lat, lng);
+//     // Обновляем базовую высоту для текущей точки
+//     const baseElevation = getBaseElevation(lat, lng);
     
-    // Плавный переход между точками
-    const targetElevation = baseElevation + (Math.random() - 0.5) * 200;
-    currentElevation = currentElevation * 0.7 + targetElevation * 0.3;
+//     // Плавный переход между точками
+//     const targetElevation = baseElevation + (Math.random() - 0.5) * 200;
+//     currentElevation = currentElevation * 0.7 + targetElevation * 0.3;
     
-    // Добавляем небольшие колебания
-    const change = (Math.random() - 0.5) * 50;
-    currentElevation = Math.max(0, currentElevation + change);
+//     // Добавляем небольшие колебания
+//     const change = (Math.random() - 0.5) * 50;
+//     currentElevation = Math.max(0, currentElevation + change);
     
-    elevations.push(Math.round(currentElevation));
-  }
+//     elevations.push(Math.round(currentElevation));
+//   }
   
-  return elevations;
-};
+//   return elevations;
+// };
